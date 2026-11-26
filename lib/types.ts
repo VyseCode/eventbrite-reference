@@ -59,6 +59,9 @@ export type ReviewDTO = {
   user: { id: string; name: string };
   rating: number;
   comment: string;
+  flagged: boolean;
+  flagReason: string;
+  removed: boolean;
   createdAt: string;
 };
 
@@ -90,4 +93,20 @@ export type DashboardEvent = {
 export type DashboardDTO = {
   summary: DashboardSummary;
   events: DashboardEvent[];
+};
+
+export type AuditLogDTO = {
+  id: string;
+  action: string;
+  summary: string;
+  actor: string;
+  details: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type AuditLogListResult = {
+  entries: AuditLogDTO[];
+  page: number;
+  totalPages: number;
+  total: number;
 };

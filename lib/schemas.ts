@@ -6,6 +6,10 @@ const dateString = z
   .refine((value) => !Number.isNaN(new Date(value).getTime()), "Enter a valid date")
   .transform((value) => new Date(value));
 
+export const objectIdSchema = z
+  .string()
+  .refine((value) => /^[a-f\d]{24}$/i.test(value), "Invalid id");
+
 const ticketTypeInput = z.object({
   name: z.string().trim().min(1, "Ticket name is required").max(80),
   price: z.number().min(0, "Price cannot be negative").max(10000),
@@ -39,6 +43,10 @@ export const eventCreateSchema = z
     { message: "Total ticket quantity exceeds capacity", path: ["ticketTypes"] },
   );
 
+const ticketTypePatchInput = ticketTypeInput.extend({
+  id: objectIdSchema.optional(),
+});
+
 export const eventPatchSchema = z.object({
   title: z.string().trim().min(2).max(140).optional(),
   description: z.string().trim().min(10).max(5000).optional(),
@@ -48,16 +56,27 @@ export const eventPatchSchema = z.object({
   start: dateString.optional(),
   end: dateString.optional(),
   capacity: z.number().int().min(1).max(100000).optional(),
+  ticketTypes: z
+    .array(ticketTypePatchInput)
+    .min(1, "Add at least one ticket type")
+    .max(10)
+    .optional(),
 });
-
-export const objectIdSchema = z
-  .string()
-  .refine((value) => /^[a-f\d]{24}$/i.test(value), "Invalid id");
 
 export const reviewSchema = z.object({
   rating: z.number().int().min(1, "Rating must be between 1 and 5").max(5),
   comment: z.string().trim().max(1000, "Review is too long").optional(),
 });
+
+export const reviewModerationSchema = z
+  .object({
+    action: z.enum(["flag", "unflag", "remove", "restore"]),
+    reason: z.string().trim().max(200).optional(),
+  })
+  .refine((data) => data.action !== "flag" || Boolean(data.reason), {
+    message: "A reason is required when flagging a review",
+    path: ["reason"],
+  });
 
 export const purchaseSchema = z
   .object({

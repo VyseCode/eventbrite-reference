@@ -92,10 +92,29 @@ const reviewSchema = new mongoose.Schema(
     event: mongoose.Schema.Types.ObjectId,
     rating: Number,
     comment: String,
+    flagged: { type: Boolean, default: false },
+    flagReason: { type: String, default: "" },
+    flaggedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
+    flaggedAt: { type: Date, default: null },
+    removed: { type: Boolean, default: false },
+    removedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
+    removedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 reviewSchema.index({ user: 1, event: 1 }, { unique: true });
+
+const auditLogSchema = new mongoose.Schema(
+  {
+    event: { type: mongoose.Schema.Types.ObjectId, required: true },
+    actor: { type: mongoose.Schema.Types.ObjectId, required: true },
+    action: String,
+    summary: String,
+    details: { type: mongoose.Schema.Types.Mixed, default: {} },
+  },
+  { timestamps: { createdAt: true, updatedAt: false } },
+);
+auditLogSchema.index({ event: 1, createdAt: -1 });
 
 const User = mongoose.model("User", userSchema);
 const Event = mongoose.model("Event", eventSchema);
@@ -103,6 +122,7 @@ const Order = mongoose.model("Order", orderSchema);
 const Ticket = mongoose.model("Ticket", ticketSchema);
 const SavedEvent = mongoose.model("SavedEvent", savedEventSchema);
 const Review = mongoose.model("Review", reviewSchema);
+const AuditLog = mongoose.model("AuditLog", auditLogSchema);
 
 const DAY = 24 * 60 * 60 * 1000;
 const inDays = (days) => new Date(Date.now() + days * DAY);
@@ -329,11 +349,13 @@ async function main() {
     Ticket.createIndexes(),
     SavedEvent.createIndexes(),
     Review.createIndexes(),
+    AuditLog.createIndexes(),
   ]);
 
   await Promise.all([
     Ticket.deleteMany({}),
     Order.deleteMany({}),
+    AuditLog.deleteMany({}),
     Review.deleteMany({}),
     SavedEvent.deleteMany({}),
     Event.deleteMany({}),
@@ -374,12 +396,16 @@ async function main() {
     { user: marcus._id, event: food._id },
   ]);
 
-  await Review.create([
+  const reviews = await Review.create([
     {
       user: sam._id,
       event: devops._id,
       rating: 5,
       comment: "Great speakers and a very well organized event.",
+      flagged: true,
+      flagReason: "Possible spam — please review this comment.",
+      flaggedBy: cole._id,
+      flaggedAt: new Date(),
     },
     {
       user: marcus._id,
@@ -406,6 +432,14 @@ async function main() {
       comment: "Clear explanations and excellent workshops.",
     },
   ]);
+
+  await AuditLog.create({
+    event: devops._id,
+    actor: cole._id,
+    action: "review_flagged",
+    summary: "Flagged a review",
+    details: { reviewId: reviews[0]._id, reason: reviews[0].flagReason },
+  });
 
   const counts = {
     users: await User.countDocuments(),
