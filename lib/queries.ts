@@ -6,6 +6,7 @@ import { Ticket } from "@/models/Ticket";
 import { User } from "@/models/User";
 import type {
   EventDTO,
+  DashboardDTO,
   EventListResult,
   ReviewDTO,
   ReviewListResult,
@@ -265,6 +266,65 @@ export async function listTickets(
     page,
     totalPages: Math.max(1, Math.ceil(total / limit)),
     total,
+  };
+}
+
+export async function getDashboard(organizerId: string): Promise<DashboardDTO> {
+  const events = (await Event.find({ organizer: organizerId })
+    .select("title start capacity ticketsSold revenue")
+    .sort({ start: 1 })
+    .limit(100)
+    .lean()) as unknown as Array<{
+    _id: Types.ObjectId;
+    title: string;
+    start: Date;
+    capacity: number;
+    ticketsSold: number;
+    revenue: number;
+  }>;
+
+  const ids = events.map((event) => event._id);
+  const checkedInByEvent = new Map<string, number>();
+  if (ids.length > 0) {
+    const rows = await Ticket.aggregate<{
+      _id: Types.ObjectId;
+      count: number;
+    }>([
+      { $match: { event: { $in: ids }, status: "used" } },
+      { $group: { _id: "$event", count: { $sum: 1 } } },
+    ]);
+    for (const row of rows) {
+      checkedInByEvent.set(row._id.toString(), row.count);
+    }
+  }
+
+  const ticketsSold = events.reduce(
+    (sum, event) => sum + (event.ticketsSold ?? 0),
+    0,
+  );
+  const revenue = events.reduce((sum, event) => sum + (event.revenue ?? 0), 0);
+  const checkedIn = Array.from(checkedInByEvent.values()).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+
+  return {
+    summary: {
+      events: events.length,
+      ticketsSold,
+      revenue: Math.round(revenue * 100) / 100,
+      checkedIn,
+      checkInRate: ticketsSold > 0 ? Math.round((checkedIn / ticketsSold) * 100) : 0,
+    },
+    events: events.map((event) => ({
+      id: event._id.toString(),
+      title: event.title,
+      start: event.start.toISOString(),
+      capacity: event.capacity,
+      ticketsSold: event.ticketsSold ?? 0,
+      revenue: Math.round((event.revenue ?? 0) * 100) / 100,
+      checkedIn: checkedInByEvent.get(event._id.toString()) ?? 0,
+    })),
   };
 }
 
