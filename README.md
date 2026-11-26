@@ -1,36 +1,101 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Evently — Eventbrite reference implementation
 
-## Getting Started
+A reference implementation inspired by **Eventbrite**: discover events, buy tickets, manage check-ins, and track organizer revenue. Built with Next.js 16.4.6 (App Router), React 19, Tailwind CSS 4, TypeScript, MongoDB/Mongoose, bcryptjs, jose (JWT in an HTTP-only cookie), and zod.
 
-First, run the development server:
+## Features
+
+- **Auth**: email/password registration and login, bcrypt hashing, signed JWT in an HTTP-only cookie, guarded app routes.
+- **Event discovery**: paginated browsing with text search and filters for category, location, and date range, plus upcoming/newest sorting.
+- **Event CRUD**: organizers create events with multiple ticket types (name, price, quantity), edit their own events, and delete events with their dependent records.
+- **Ticketing**: purchase issues a unique ticket code per ticket, reserves inventory atomically with `findOneAndUpdate`-style guarded `$inc`, enforces capacity, per-order limits, sold-out and post-event guards, with rollback on partial failure.
+- **My tickets**: paginated list with valid/checked-in filters and ticket codes.
+- **Check-in**: organizer-only, marks a ticket used exactly once; a second check-in returns 409.
+- **Engagement**: save/unsave events and one review per user per event with ratings.
+- **Organizer dashboard**: events, tickets sold, revenue, checked-in count, check-in rate, and per-event stats.
+- Responsive cards, detail page with ticket selection, loading/disabled states, empty states, and inline error states.
+
+## Local setup
+
+1. `npm install`
+2. Start MongoDB locally (`127.0.0.1:27017`) or set `MONGODB_URI`.
+3. Copy `.env.example` to `.env.local` and set a real `JWT_SECRET`.
+4. `npm run seed` (re-runnable; wipes only `eventbrite_ref`).
+5. `npm run build && npm run start -- -p 3209` (or `npm run dev -- -p 3209`).
+
+Open <http://localhost:3209>. The production port used for verification is **3209**.
+
+## Environment
+
+| Variable | Example | Purpose |
+| --- | --- | --- |
+| `MONGODB_URI` | `mongodb://127.0.0.1:27017/eventbrite_ref` | Mongo connection string |
+| `JWT_SECRET` | `replace-with-a-long-random-secret` | HMAC secret for session tokens |
+
+`.env.local` is gitignored; `.env.example` is committed.
+
+## Seed data
+
+`npm run seed` creates indexes, clears only the `eventbrite_ref` database, and inserts:
+5 users, 9 events (including a past event and a sold-out ticket type), 8 orders, 30 tickets (some already checked in), 4 saved events, and 5 reviews.
+
+### Demo accounts (password for all: `password123`)
+
+| Email | Role |
+| --- | --- |
+| `organizer@example.com` | Organizer of most events — use for dashboard and check-in |
+| `cole@example.com` | Organizer of the past DevOps event |
+| `attendee@example.com` | Attendee with tickets and saves |
+| `priya@example.com` | Attendee |
+| `marcus@example.com` | Attendee with checked-in tickets and reviews |
+
+## Checks
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm run typecheck
+npm run build
+npm run seed
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## API
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| POST | `/api/auth/register` | Create account (201) |
+| POST | `/api/auth/login` | Sign in |
+| POST | `/api/auth/logout` | Clear session cookie |
+| GET | `/api/auth/me` | Current user (or `user: null`) |
+| GET/POST | `/api/events` | Browse/search/filter/paginate / create event |
+| GET/PATCH/DELETE | `/api/events/[id]` | Event detail / edit (owner) / delete (owner) |
+| GET | `/api/events/mine` | Events you organize |
+| POST | `/api/events/[id]/purchase` | Buy tickets, reserve inventory atomically |
+| GET | `/api/events/[id]/tickets` | Organizer-only attendee ticket list |
+| GET/POST | `/api/events/[id]/reviews` | List / add review |
+| POST | `/api/events/[id]/save` | Toggle saved event |
+| GET | `/api/tickets` | My tickets (paginated, status filter) |
+| POST | `/api/tickets/[code]/check-in` | Organizer check-in (once) |
+| GET | `/api/dashboard` | Organizer stats |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Pages
 
-## Learn More
+`/` (redirect), `/login`, `/register`, `/events`, `/events/new`, `/events/[id]`, `/events/[id]/edit`, `/tickets`, `/manage`. Authenticated pages redirect anonymous visitors to `/login`.
 
-To learn more about Next.js, take a look at the following resources:
+## Scalability notes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- One cached Mongoose connection with a bounded pool avoids reconnect storms on hot reload.
+- Unique compound indexes enforce one save and one review per user/event; unique ticket codes prevent collisions.
+- Inventory is reserved with conditional atomic `$inc`; list/sort fields are indexed; reads use `.lean()` and explicit projections; all list endpoints are paginated and capped.
+- Passwords are never selected by default and never serialized to clients.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Known limitations
 
-## Deploy on Vercel
+- No real payment gateway; ticket prices are recorded but no money is charged.
+- No email verification, password reset, rate limiting, or refund/cancellation flow.
+- Ticket codes are plain text (no scannable QR image), and check-in is manual by code.
+- Ticket types are immutable after creation to avoid invalidating sold tickets; event fields are editable.
+- Reviews are simple ratings/comments with no moderation or helpfulness voting.
+- Local Mongo connection; no deployment configuration for a hosted database.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Reference
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Architecture and patterns follow the internal Next.js 16 reference implementation (`linkedin-clone`), with product scope inspired by Eventbrite. This is a demo/reference project, not affiliated with Eventbrite.
