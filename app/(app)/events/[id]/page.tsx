@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Types } from "mongoose";
 import { hasEnded } from "@/lib/datetime";
 import { CheckInPanel } from "@/components/CheckInPanel";
 import { ReviewsPanel } from "@/components/ReviewsPanel";
@@ -43,6 +44,7 @@ export default async function EventDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (!Types.ObjectId.isValid(id)) notFound();
   const session = await getSession();
   await connectDB();
   const [event, reviews] = await Promise.all([
