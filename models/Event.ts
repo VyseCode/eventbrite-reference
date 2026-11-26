@@ -1,17 +1,8 @@
 import { Schema, model, models, type Model, type Types } from "mongoose";
-
-export const EVENT_CATEGORIES = [
-  "Conference",
-  "Workshop",
-  "Music",
-  "Sports",
-  "Food & Drink",
-  "Arts & Culture",
-  "Tech",
-  "Other",
-] as const;
-
-export type EventCategory = (typeof EVENT_CATEGORIES)[number];
+import {
+  EVENT_CATEGORIES,
+  type EventCategory,
+} from "@/lib/constants";
 
 export interface ITicketType {
   _id: Types.ObjectId;
