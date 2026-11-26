@@ -54,6 +54,11 @@ export const objectIdSchema = z
   .string()
   .refine((value) => /^[a-f\d]{24}$/i.test(value), "Invalid id");
 
+export const reviewSchema = z.object({
+  rating: z.number().int().min(1, "Rating must be between 1 and 5").max(5),
+  comment: z.string().trim().max(1000, "Review is too long").optional(),
+});
+
 export const purchaseSchema = z
   .object({
     items: z

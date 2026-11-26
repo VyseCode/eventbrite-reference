@@ -7,6 +7,8 @@ import { User } from "@/models/User";
 import type {
   EventDTO,
   EventListResult,
+  ReviewDTO,
+  ReviewListResult,
   TicketDTO,
   TicketListResult,
 } from "@/lib/types";
@@ -260,6 +262,48 @@ export async function listTickets(
         purchasedAt: doc.createdAt.toISOString(),
       };
     }),
+    page,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+    total,
+  };
+}
+
+export async function listReviews(
+  eventId: string,
+  options: { page?: number; limit?: number },
+): Promise<ReviewListResult> {
+  const page = Math.min(Math.max(options.page ?? 1, 1), 1000);
+  const limit = Math.min(Math.max(options.limit ?? 10, 1), 50);
+
+  const [docs, total] = await Promise.all([
+    Review.find({ event: eventId })
+      .populate({ path: "user", model: User, select: "name" })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean() as unknown as Promise<
+      Array<{
+        _id: Types.ObjectId;
+        user: { _id: Types.ObjectId; name: string } | null;
+        rating: number;
+        comment: string;
+        createdAt: Date;
+      }>
+    >,
+    Review.countDocuments({ event: eventId }),
+  ]);
+
+  return {
+    reviews: docs.map<ReviewDTO>((doc) => ({
+      id: doc._id.toString(),
+      user: {
+        id: doc.user?._id.toString() ?? "",
+        name: doc.user?.name ?? "Former attendee",
+      },
+      rating: doc.rating,
+      comment: doc.comment,
+      createdAt: doc.createdAt.toISOString(),
+    })),
     page,
     totalPages: Math.max(1, Math.ceil(total / limit)),
     total,

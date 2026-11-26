@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CheckInPanel } from "@/components/CheckInPanel";
+import { ReviewsPanel } from "@/components/ReviewsPanel";
+import { SaveButton } from "@/components/SaveButton";
 import { TicketPurchase } from "@/components/TicketPurchase";
 import {
   CalendarIcon,
@@ -10,7 +12,7 @@ import {
 } from "@/components/Icons";
 import { getSession } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
-import { getEventById } from "@/lib/queries";
+import { getEventById, listReviews } from "@/lib/queries";
 
 export async function generateMetadata({
   params,
@@ -42,7 +44,10 @@ export default async function EventDetailPage({
   const { id } = await params;
   const session = await getSession();
   await connectDB();
-  const event = await getEventById(id, session?.userId ?? "");
+  const [event, reviews] = await Promise.all([
+    getEventById(id, session?.userId ?? ""),
+    listReviews(id, { page: 1, limit: 10 }),
+  ]);
   if (!event) notFound();
 
   const isOrganizer = event.organizer.id === session?.userId;
@@ -67,14 +72,17 @@ export default async function EventDetailPage({
                   ` · ${event.ratingAverage.toFixed(1)} ★ (${event.reviewsCount} reviews)`}
               </p>
             </div>
-            {isOrganizer && (
-              <Link
-                href={`/events/${event.id}/edit`}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Edit event
-              </Link>
-            )}
+            <div className="flex flex-col gap-2">
+              {isOrganizer && (
+                <Link
+                  href={`/events/${event.id}/edit`}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Edit event
+                </Link>
+              )}
+              <SaveButton eventId={event.id} initialSaved={event.savedByMe} />
+            </div>
           </div>
 
           <div className="grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
@@ -144,6 +152,8 @@ export default async function EventDetailPage({
           <CheckInPanel eventId={event.id} />
         </section>
       )}
+
+      <ReviewsPanel eventId={event.id} initial={reviews} />
     </div>
   );
 }
