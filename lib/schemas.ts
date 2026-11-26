@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EVENT_CATEGORIES } from "@/lib/constants";
+import { EVENT_CATEGORIES, MAX_TICKETS_PER_ORDER } from "@/lib/constants";
 
 const dateString = z
   .string()
@@ -53,3 +53,32 @@ export const eventPatchSchema = z.object({
 export const objectIdSchema = z
   .string()
   .refine((value) => /^[a-f\d]{24}$/i.test(value), "Invalid id");
+
+export const purchaseSchema = z
+  .object({
+    items: z
+      .array(
+        z.object({
+          ticketTypeId: objectIdSchema,
+          quantity: z
+            .number()
+            .int()
+            .min(1, "Quantity must be at least 1")
+            .max(MAX_TICKETS_PER_ORDER, "Too many tickets in one order"),
+        }),
+      )
+      .min(1, "Select at least one ticket type")
+      .max(5, "Too many ticket types in one order"),
+  })
+  .refine(
+    (data) =>
+      data.items.reduce((sum, item) => sum + item.quantity, 0) <=
+      MAX_TICKETS_PER_ORDER,
+    { message: `You can buy at most ${MAX_TICKETS_PER_ORDER} tickets per order` },
+  )
+  .refine(
+    (data) =>
+      new Set(data.items.map((item) => item.ticketTypeId)).size ===
+      data.items.length,
+    { message: "Duplicate ticket types are not allowed" },
+  );

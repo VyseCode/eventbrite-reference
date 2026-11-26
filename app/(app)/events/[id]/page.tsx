@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CheckInPanel } from "@/components/CheckInPanel";
+import { TicketPurchase } from "@/components/TicketPurchase";
 import {
   CalendarIcon,
   ClockIcon,
@@ -128,6 +130,20 @@ export default async function EventDetailPage({
           ))}
         </ul>
       </section>
+
+      {!isOrganizer && (
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold">Buy tickets</h2>
+          <TicketPurchase event={event} />
+        </section>
+      )}
+
+      {isOrganizer && (
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold">Check-in desk</h2>
+          <CheckInPanel eventId={event.id} />
+        </section>
+      )}
     </div>
   );
 }

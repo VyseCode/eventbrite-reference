@@ -2,8 +2,14 @@ import { Types } from "mongoose";
 import { Event } from "@/models/Event";
 import { Review } from "@/models/Review";
 import { SavedEvent } from "@/models/SavedEvent";
+import { Ticket } from "@/models/Ticket";
 import { User } from "@/models/User";
-import type { EventDTO, EventListResult } from "@/lib/types";
+import type {
+  EventDTO,
+  EventListResult,
+  TicketDTO,
+  TicketListResult,
+} from "@/lib/types";
 
 type LeanOrganizer = { _id: Types.ObjectId; name: string };
 
@@ -177,7 +183,7 @@ export async function getEventById(
 ): Promise<EventDTO | null> {
   if (!Types.ObjectId.isValid(id)) return null;
   const doc = (await Event.findById(id)
-    .populate("organizer", "name")
+    .populate({ path: "organizer", model: User, select: "name" })
     .lean()) as unknown as LeanEvent | null;
   if (!doc) return null;
 
@@ -187,4 +193,137 @@ export async function getEventById(
     ratingsFor(ids),
   ]);
   return toDTO(doc, saved, ratings);
+}
+
+type LeanTicketEvent = {
+  _id: Types.ObjectId;
+  title: string;
+  start: Date;
+  venue: string;
+  location: string;
+  ticketTypes: Array<{ _id: Types.ObjectId; name: string }>;
+};
+
+type LeanTicket = {
+  _id: Types.ObjectId;
+  code: string;
+  event: LeanTicketEvent | null;
+  ticketType: Types.ObjectId;
+  order: Types.ObjectId;
+  pricePaid: number;
+  status: "valid" | "used";
+  checkedInAt: Date | null;
+  createdAt: Date;
+};
+
+export async function listTickets(
+  userId: string,
+  options: { page?: number; limit?: number; status?: "valid" | "used" },
+): Promise<TicketListResult> {
+  const page = Math.min(Math.max(options.page ?? 1, 1), 1000);
+  const limit = Math.min(Math.max(options.limit ?? 12, 1), 50);
+  const filter: Record<string, unknown> = { owner: userId };
+  if (options.status) filter.status = options.status;
+
+  const [docs, total] = await Promise.all([
+    Ticket.find(filter)
+      .populate({
+        path: "event",
+        model: Event,
+        select: "title start venue location ticketTypes",
+      })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean() as unknown as Promise<LeanTicket[]>,
+    Ticket.countDocuments(filter),
+  ]);
+
+  return {
+    tickets: docs.map<TicketDTO>((doc) => {
+      const type = doc.event?.ticketTypes.find(
+        (item) => item._id.toString() === doc.ticketType.toString(),
+      );
+      return {
+        id: doc._id.toString(),
+        code: doc.code,
+        orderId: doc.order.toString(),
+        eventId: doc.event?._id.toString() ?? "",
+        eventTitle: doc.event?.title ?? "Event removed",
+        eventStart: doc.event?.start.toISOString() ?? "",
+        venue: doc.event?.venue ?? "",
+        location: doc.event?.location ?? "",
+        ticketTypeName: type?.name ?? "Ticket",
+        pricePaid: doc.pricePaid,
+        status: doc.status,
+        checkedInAt: doc.checkedInAt?.toISOString() ?? null,
+        purchasedAt: doc.createdAt.toISOString(),
+      };
+    }),
+    page,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+    total,
+  };
+}
+
+export type EventTicketDTO = {
+  id: string;
+  code: string;
+  attendee: string;
+  ticketTypeName: string;
+  status: "valid" | "used";
+  checkedInAt: string | null;
+  purchasedAt: string;
+};
+
+export async function listEventTickets(
+  eventId: string,
+  options: { page?: number; limit?: number; status?: "valid" | "used" },
+): Promise<{
+  tickets: EventTicketDTO[];
+  page: number;
+  totalPages: number;
+  total: number;
+}> {
+  const page = Math.min(Math.max(options.page ?? 1, 1), 1000);
+  const limit = Math.min(Math.max(options.limit ?? 12, 1), 50);
+  const filter: Record<string, unknown> = { event: eventId };
+  if (options.status) filter.status = options.status;
+
+  const [docs, total] = await Promise.all([
+    Ticket.find(filter)
+      .populate({ path: "owner", model: User, select: "name" })
+      .populate({ path: "event", model: Event, select: "ticketTypes" })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean() as unknown as Promise<
+      Array<
+        LeanTicket & {
+          owner: { _id: Types.ObjectId; name: string } | null;
+        }
+      >
+    >,
+    Ticket.countDocuments(filter),
+  ]);
+
+  return {
+    tickets: docs.map((doc) => {
+      const type = doc.event?.ticketTypes.find(
+        (item) => item._id.toString() === doc.ticketType.toString(),
+      );
+      return {
+        id: doc._id.toString(),
+        code: doc.code,
+        attendee: doc.owner?.name ?? "Unknown",
+        ticketTypeName: type?.name ?? "Ticket",
+        status: doc.status,
+        checkedInAt: doc.checkedInAt?.toISOString() ?? null,
+        purchasedAt: doc.createdAt.toISOString(),
+      };
+    }),
+    page,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+    total,
+  };
 }
