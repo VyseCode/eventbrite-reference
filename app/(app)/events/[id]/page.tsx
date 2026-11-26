@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Types } from "mongoose";
 import { hasEnded } from "@/lib/datetime";
+import { AuditTrail } from "@/components/AuditTrail";
 import { CheckInPanel } from "@/components/CheckInPanel";
 import { ReviewsPanel } from "@/components/ReviewsPanel";
 import { SaveButton } from "@/components/SaveButton";
@@ -14,7 +15,12 @@ import {
 } from "@/components/Icons";
 import { getSession } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
-import { getEventById, listEventTickets, listReviews } from "@/lib/queries";
+import {
+  getEventById,
+  listAuditLogs,
+  listEventTickets,
+  listReviews,
+} from "@/lib/queries";
 
 export async function generateMetadata({
   params,
@@ -47,17 +53,16 @@ export default async function EventDetailPage({
   if (!Types.ObjectId.isValid(id)) notFound();
   const session = await getSession();
   await connectDB();
-  const [event, reviews] = await Promise.all([
-    getEventById(id, session?.userId ?? ""),
-    listReviews(id, { page: 1, limit: 10 }),
-  ]);
+  const event = await getEventById(id, session?.userId ?? "");
   if (!event) notFound();
 
   const isOrganizer = event.organizer.id === session?.userId;
+  const [reviews, organizerTickets, audit] = await Promise.all([
+    listReviews(id, { page: 1, limit: 10, includeRemoved: isOrganizer }),
+    isOrganizer ? listEventTickets(id, { limit: 20 }) : Promise.resolve(null),
+    isOrganizer ? listAuditLogs(id, { limit: 20 }) : Promise.resolve(null),
+  ]);
   const ended = hasEnded(event.end);
-  const organizerTickets = isOrganizer
-    ? await listEventTickets(id, { limit: 20 })
-    : null;
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -163,7 +168,13 @@ export default async function EventDetailPage({
         </section>
       )}
 
-      <ReviewsPanel eventId={event.id} initial={reviews} />
+      <ReviewsPanel
+        eventId={event.id}
+        initial={reviews}
+        canModerate={isOrganizer}
+      />
+
+      {isOrganizer && audit && <AuditTrail entries={audit.entries} />}
     </div>
   );
 }

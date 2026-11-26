@@ -24,11 +24,14 @@ export async function GET(
       if (value.trim()) raw[key] = value;
     }
     const query = querySchema.parse(raw);
+    const session = await getSession();
     await connectDB();
-    if (!(await Event.exists({ _id: eventId }))) {
-      return fail("Event not found", 404);
-    }
-    return ok(await listReviews(eventId, query));
+    const event = await Event.findById(eventId).select("organizer").lean();
+    if (!event) return fail("Event not found", 404);
+    const isOrganizer = Boolean(
+      session && event.organizer.toString() === session.userId,
+    );
+    return ok(await listReviews(eventId, { ...query, includeRemoved: isOrganizer }));
   } catch (error) {
     return handleError(error);
   }

@@ -3,18 +3,24 @@
 import { useState } from "react";
 import type { ReviewDTO, ReviewListResult } from "@/lib/types";
 
+type ModerationAction = "flag" | "unflag" | "remove" | "restore";
+
 export function ReviewsPanel({
   eventId,
   initial,
+  canModerate = false,
 }: {
   eventId: string;
   initial: ReviewListResult;
+  canModerate?: boolean;
 }) {
   const [result, setResult] = useState(initial);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
+  const [actionBusy, setActionBusy] = useState("");
   const [error, setError] = useState("");
+  const [reasons, setReasons] = useState<Record<string, string>>({});
 
   async function load(page: number) {
     setBusy(true);
@@ -64,6 +70,9 @@ export function ReviewsPanel({
           rating: created.rating,
           comment: created.comment,
           createdAt: created.createdAt,
+          flagged: false,
+          flagReason: "",
+          removed: false,
           user: { id: "me", name: "You" },
         };
         setResult((current) => ({
@@ -78,6 +87,52 @@ export function ReviewsPanel({
       setError("Could not add your review");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function moderate(reviewId: string, action: ModerationAction) {
+    setActionBusy(reviewId);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/events/${eventId}/reviews/${reviewId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, reason: reasons[reviewId] ?? "" }),
+        },
+      );
+      const data = (await response.json()) as {
+        review?: {
+          flagged: boolean;
+          flagReason: string;
+          removed: boolean;
+        };
+        error?: string;
+      };
+      if (!response.ok || !data.review) {
+        setError(data.error ?? "Could not update the review");
+        return;
+      }
+      const updated = data.review;
+      setResult((current) => ({
+        ...current,
+        reviews: current.reviews.map((review) =>
+          review.id === reviewId
+            ? {
+                ...review,
+                flagged: updated.flagged,
+                flagReason: updated.flagReason,
+                removed: updated.removed,
+              }
+            : review,
+        ),
+      }));
+      setReasons((current) => ({ ...current, [reviewId]: "" }));
+    } catch {
+      setError("Could not update the review");
+    } finally {
+      setActionBusy("");
     }
   }
 
@@ -146,6 +201,80 @@ export function ReviewsPanel({
               <p className="mt-1 text-xs text-slate-400">
                 {new Date(review.createdAt).toLocaleDateString()}
               </p>
+              {canModerate && (review.flagged || review.removed) && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {review.flagged && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                      Flagged: {review.flagReason || "No reason given"}
+                    </span>
+                  )}
+                  {review.removed && (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                      Hidden from attendees
+                    </span>
+                  )}
+                </div>
+              )}
+              {canModerate && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <input
+                    aria-label={`Moderation reason for ${review.user.name}`}
+                    placeholder="Moderation reason"
+                    maxLength={200}
+                    value={reasons[review.id] ?? ""}
+                    onChange={(e) =>
+                      setReasons((current) => ({
+                        ...current,
+                        [review.id]: e.target.value,
+                      }))
+                    }
+                    className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                  />
+                  {!review.removed ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={
+                          busy ||
+                          actionBusy === review.id ||
+                          !reasons[review.id]?.trim()
+                        }
+                        onClick={() => void moderate(review.id, "flag")}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                      >
+                        {review.flagged ? "Update flag" : "Flag"}
+                      </button>
+                      {review.flagged && (
+                        <button
+                          type="button"
+                          disabled={busy || actionBusy === review.id}
+                          onClick={() => void moderate(review.id, "unflag")}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                        >
+                          Clear flag
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={busy || actionBusy === review.id}
+                        onClick={() => void moderate(review.id, "remove")}
+                        className="rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy || actionBusy === review.id}
+                      onClick={() => void moderate(review.id, "restore")}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                    >
+                      Restore
+                    </button>
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>

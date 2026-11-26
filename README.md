@@ -6,11 +6,12 @@ A reference implementation inspired by **Eventbrite**: discover events, buy tick
 
 - **Auth**: email/password registration and login, bcrypt hashing, signed JWT in an HTTP-only cookie, guarded app routes.
 - **Event discovery**: paginated browsing with text search and filters for category, location, and date range, plus upcoming/newest sorting.
-- **Event CRUD**: organizers create events with multiple ticket types (name, price, quantity), edit their own events, and delete events with their dependent records.
+- **Event CRUD**: organizers create events with multiple ticket types (name, price, quantity), edit their own events and ticket types, and delete events with their dependent records. Ticket type edits cannot reduce quantity below tickets already sold, and sold types cannot be removed.
 - **Ticketing**: purchase issues a unique ticket code per ticket, reserves inventory atomically with `findOneAndUpdate`-style guarded `$inc`, enforces capacity, per-order limits, sold-out and post-event guards, with rollback on partial failure.
 - **My tickets**: paginated list with valid/checked-in filters and ticket codes.
 - **Check-in**: organizer-only, marks a ticket used exactly once; a second check-in returns 409.
-- **Engagement**: save/unsave events and one review per user per event with ratings.
+- **Engagement**: save/unsave events and one review per user per event with ratings. Organizers can flag, unflag, hide and restore reviews; removed reviews are hidden from attendees and excluded from ratings.
+- **Audit trail**: organizer event edits and review moderation actions are recorded per event and shown on the event page.
 - **Organizer dashboard**: events, tickets sold, revenue, checked-in count, check-in rate, and per-event stats.
 - Responsive cards, detail page with ticket selection, loading/disabled states, empty states, and inline error states.
 
@@ -19,7 +20,7 @@ A reference implementation inspired by **Eventbrite**: discover events, buy tick
 1. `npm install`
 2. Start MongoDB locally (`127.0.0.1:27017`) or set `MONGODB_URI`.
 3. Copy `.env.example` to `.env.local` and set a real `JWT_SECRET`.
-4. `npm run seed` (re-runnable; wipes only `eventbrite_ref`).
+4. `npm run seed` (re-runnable; wipes only `eventbrite_ref`). Seeds one flagged review and its audit entry for demoing moderation.
 5. `npm run build && npm run start -- -p 3209` (or `npm run dev -- -p 3209`).
 
 Open <http://localhost:3209>. The production port used for verification is **3209**.
@@ -70,7 +71,9 @@ npm run seed
 | GET | `/api/events/mine` | Events you organize |
 | POST | `/api/events/[id]/purchase` | Buy tickets, reserve inventory atomically |
 | GET | `/api/events/[id]/tickets` | Organizer-only attendee ticket list |
-| GET/POST | `/api/events/[id]/reviews` | List / add review |
+| GET/POST | `/api/events/[id]/reviews` | List / add review (organizers also see removed reviews) |
+| PATCH | `/api/events/[id]/reviews/[reviewId]` | Organizer flag/unflag/remove/restore review |
+| GET | `/api/events/[id]/audit` | Organizer change history for an event |
 | POST | `/api/events/[id]/save` | Toggle saved event |
 | GET | `/api/tickets` | My tickets (paginated, status filter) |
 | POST | `/api/tickets/[code]/check-in` | Organizer check-in (once) |
@@ -92,8 +95,8 @@ npm run seed
 - No real payment gateway; ticket prices are recorded but no money is charged.
 - No email verification, password reset, rate limiting, or refund/cancellation flow.
 - Ticket codes are plain text (no scannable QR image), and check-in is manual by code.
-- Ticket types are immutable after creation to avoid invalidating sold tickets; event fields are editable.
-- Reviews are simple ratings/comments with no moderation or helpfulness voting.
+- Moderation is organizer-only and local to each event; there is no platform-wide trust & safety team, appeal flow, or helpfulness voting.
+- Ticket price edits affect future purchases only; previously sold tickets keep the price recorded on their order.
 - Local Mongo connection; no deployment configuration for a hosted database.
 
 ## Reference

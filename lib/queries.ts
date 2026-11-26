@@ -1,10 +1,13 @@
 import { Types } from "mongoose";
+import { AuditLog } from "@/models/AuditLog";
 import { Event } from "@/models/Event";
 import { Review } from "@/models/Review";
 import { SavedEvent } from "@/models/SavedEvent";
 import { Ticket } from "@/models/Ticket";
 import { User } from "@/models/User";
 import type {
+  AuditLogDTO,
+  AuditLogListResult,
   EventDTO,
   DashboardDTO,
   EventListResult,
@@ -67,7 +70,7 @@ async function ratingsFor(ids: Types.ObjectId[]) {
     average: number;
     count: number;
   }>([
-    { $match: { event: { $in: ids } } },
+    { $match: { event: { $in: ids }, removed: { $ne: true } } },
     {
       $group: {
         _id: "$event",
@@ -330,13 +333,15 @@ export async function getDashboard(organizerId: string): Promise<DashboardDTO> {
 
 export async function listReviews(
   eventId: string,
-  options: { page?: number; limit?: number },
+  options: { page?: number; limit?: number; includeRemoved?: boolean },
 ): Promise<ReviewListResult> {
   const page = Math.min(Math.max(options.page ?? 1, 1), 1000);
   const limit = Math.min(Math.max(options.limit ?? 10, 1), 50);
+  const filter: Record<string, unknown> = { event: eventId };
+  if (!options.includeRemoved) filter.removed = { $ne: true };
 
   const [docs, total] = await Promise.all([
-    Review.find({ event: eventId })
+    Review.find(filter)
       .populate({ path: "user", model: User, select: "name" })
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
@@ -347,10 +352,13 @@ export async function listReviews(
         user: { _id: Types.ObjectId; name: string } | null;
         rating: number;
         comment: string;
+        flagged: boolean;
+        flagReason: string;
+        removed: boolean;
         createdAt: Date;
       }>
     >,
-    Review.countDocuments({ event: eventId }),
+    Review.countDocuments(filter),
   ]);
 
   return {
@@ -362,6 +370,49 @@ export async function listReviews(
       },
       rating: doc.rating,
       comment: doc.comment,
+      flagged: options.includeRemoved ? Boolean(doc.flagged) : false,
+      flagReason: options.includeRemoved ? doc.flagReason ?? "" : "",
+      removed: Boolean(doc.removed),
+      createdAt: doc.createdAt.toISOString(),
+    })),
+    page,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+    total,
+  };
+}
+
+export async function listAuditLogs(
+  eventId: string,
+  options: { page?: number; limit?: number },
+): Promise<AuditLogListResult> {
+  const page = Math.min(Math.max(options.page ?? 1, 1), 1000);
+  const limit = Math.min(Math.max(options.limit ?? 10, 1), 50);
+
+  const [docs, total] = await Promise.all([
+    AuditLog.find({ event: eventId })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean() as unknown as Promise<
+      Array<{
+        _id: Types.ObjectId;
+        action: string;
+        summary: string;
+        actor: Types.ObjectId;
+        details: Record<string, unknown>;
+        createdAt: Date;
+      }>
+    >,
+    AuditLog.countDocuments({ event: eventId }),
+  ]);
+
+  return {
+    entries: docs.map<AuditLogDTO>((doc) => ({
+      id: doc._id.toString(),
+      action: doc.action,
+      summary: doc.summary,
+      actor: doc.actor.toString(),
+      details: doc.details ?? {},
       createdAt: doc.createdAt.toISOString(),
     })),
     page,

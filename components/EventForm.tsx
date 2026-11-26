@@ -5,7 +5,13 @@ import { useState } from "react";
 import { EVENT_CATEGORIES, type EventCategory } from "@/lib/constants";
 import type { EventDTO } from "@/lib/types";
 
-type TicketRow = { name: string; price: string; quantity: string };
+type TicketRow = {
+  id?: string;
+  name: string;
+  price: string;
+  quantity: string;
+  sold: number;
+};
 
 const inputClass =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#d1410c] focus:ring-2 focus:ring-[#d1410c]/20";
@@ -29,10 +35,14 @@ export function EventForm({ initial }: { initial?: EventDTO }) {
   const [capacity, setCapacity] = useState(String(initial?.capacity ?? 100));
   const [rows, setRows] = useState<TicketRow[]>(
     initial?.ticketTypes.map((type) => ({
+      id: type.id,
       name: type.name,
       price: String(type.price),
       quantity: String(type.quantity),
-    })) ?? [{ name: "General Admission", price: "0", quantity: "50" }],
+      sold: Math.max(0, type.quantity - type.remaining),
+    })) ?? [
+      { name: "General Admission", price: "0", quantity: "50", sold: 0 },
+    ],
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,6 +51,10 @@ export function EventForm({ initial }: { initial?: EventDTO }) {
     setRows((current) =>
       current.map((row, i) => (i === index ? { ...row, ...patch } : row)),
     );
+  }
+
+  function removeRow(index: number) {
+    setRows((current) => current.filter((_, i) => i !== index));
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -57,15 +71,12 @@ export function EventForm({ initial }: { initial?: EventDTO }) {
       start: new Date(start).toISOString(),
       end: new Date(end).toISOString(),
       capacity: Number(capacity),
-      ...(editing
-        ? {}
-        : {
-            ticketTypes: rows.map((row) => ({
-              name: row.name,
-              price: Number(row.price),
-              quantity: Number(row.quantity),
-            })),
-          }),
+      ticketTypes: rows.map((row) => ({
+        ...(row.id ? { id: row.id } : {}),
+        name: row.name,
+        price: Number(row.price),
+        quantity: Number(row.quantity),
+      })),
     };
 
     try {
@@ -222,14 +233,17 @@ export function EventForm({ initial }: { initial?: EventDTO }) {
 
       <fieldset className="space-y-3 rounded-lg border border-slate-200 p-4">
         <legend className="px-1 text-sm font-semibold">Ticket types</legend>
-        {editing ? (
-          <p className="text-xs text-slate-500">
-            Ticket types and inventory are fixed after creation to protect sold
-            tickets. Create a new event to offer different tickets.
-          </p>
-        ) : (
-          rows.map((row, index) => (
-            <div key={index} className="grid gap-2 sm:grid-cols-[1fr_100px_100px]">
+        <p className="text-xs text-slate-500">
+          {editing
+            ? "Edit names, prices or inventory. Quantity cannot drop below tickets already sold, and sold types cannot be removed."
+            : "Set the ticket options attendees can buy."}
+        </p>
+        {rows.map((row, index) => (
+          <div
+            key={row.id ?? `new-${index}`}
+            className="space-y-2 rounded-lg border border-slate-100 p-3"
+          >
+            <div className="grid gap-2 sm:grid-cols-[1fr_100px_100px_auto]">
               <input
                 aria-label={`Ticket type ${index + 1} name`}
                 placeholder="Ticket name"
@@ -250,22 +264,38 @@ export function EventForm({ initial }: { initial?: EventDTO }) {
               <input
                 aria-label={`Ticket type ${index + 1} quantity`}
                 type="number"
-                min={1}
+                min={Math.max(1, row.sold)}
                 required
                 value={row.quantity}
                 onChange={(e) => updateRow(index, { quantity: e.target.value })}
                 className={inputClass}
               />
+              <button
+                type="button"
+                disabled={row.sold > 0}
+                onClick={() => removeRow(index)}
+                title={
+                  row.sold > 0 ? "Remove is blocked for sold ticket types" : undefined
+                }
+                className="rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Remove
+              </button>
             </div>
-          ))
-        )}
-        {!editing && rows.length < 10 && (
+            {row.sold > 0 && (
+              <p className="text-xs text-slate-500">
+                {row.sold} sold — quantity cannot go lower
+              </p>
+            )}
+          </div>
+        ))}
+        {rows.length < 10 && (
           <button
             type="button"
             onClick={() =>
               setRows((current) => [
                 ...current,
-                { name: "", price: "0", quantity: "25" },
+                { name: "", price: "0", quantity: "25", sold: 0 },
               ])
             }
             className="text-sm font-semibold text-[#d1410c] hover:underline"
