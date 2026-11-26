@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import type { EventTicketDTO } from "@/lib/queries";
 
 type TicketList = {
@@ -8,15 +8,25 @@ type TicketList = {
   total: number;
 };
 
-export function CheckInPanel({ eventId }: { eventId: string }) {
-  const [tickets, setTickets] = useState<EventTicketDTO[]>([]);
-  const [total, setTotal] = useState(0);
+type CheckInPanelProps = {
+  eventId: string;
+  initialTickets: EventTicketDTO[];
+  initialTotal: number;
+};
+
+export function CheckInPanel({
+  eventId,
+  initialTickets,
+  initialTotal,
+}: CheckInPanelProps) {
+  const [tickets, setTickets] = useState<EventTicketDTO[]>(initialTickets);
+  const [total, setTotal] = useState(initialTotal);
   const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  async function load() {
     try {
       const response = await fetch(`/api/events/${eventId}/tickets?limit=20`);
       const data = (await response.json()) as TicketList & { error?: string };
@@ -29,11 +39,7 @@ export function CheckInPanel({ eventId }: { eventId: string }) {
     } catch {
       setError("Could not load tickets");
     }
-  }, [eventId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  }
 
   async function checkIn(ticketCode: string) {
     setBusy(true);

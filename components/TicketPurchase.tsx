@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { MAX_TICKETS_PER_ORDER } from "@/lib/constants";
+import { hasEnded } from "@/lib/datetime";
 import type { EventDTO } from "@/lib/types";
 
 export function TicketPurchase({ event }: { event: EventDTO }) {
@@ -10,7 +11,7 @@ export function TicketPurchase({ event }: { event: EventDTO }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [codes, setCodes] = useState<string[]>([]);
-  const ended = new Date(event.end).getTime() <= Date.now();
+  const ended = hasEnded(event.end);
 
   function setQuantity(id: string, value: string) {
     setQuantities((current) => ({ ...current, [id]: value }));

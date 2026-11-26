@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { isPast } from "@/lib/datetime";
 import type { DashboardEvent } from "@/lib/types";
 
 export function DashboardEvents({ events }: { events: DashboardEvent[] }) {
@@ -12,9 +13,9 @@ export function DashboardEvents({ events }: { events: DashboardEvent[] }) {
     const matchesQuery = event.title
       .toLowerCase()
       .includes(query.trim().toLowerCase());
-    const isPast = new Date(event.start).getTime() <= Date.now();
+    const past = isPast(event.start);
     const matchesPeriod =
-      period === "all" || (period === "past" ? isPast : !isPast);
+      period === "all" || (period === "past" ? past : !past);
     return matchesQuery && matchesPeriod;
   });
 

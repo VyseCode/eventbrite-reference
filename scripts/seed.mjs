@@ -350,18 +350,17 @@ async function main() {
       makeEvent(index === 7 ? cole : ava, data),
     ),
   );
-  const [reactConf, jazz, workshop, marathon, food, art, games, devops, vintage] =
+  const [reactConf, jazz, workshop, , food, art, games, devops, vintage] =
     events;
 
-  let ticketCount = 0;
-  ticketCount += await purchase(sam, reactConf, 0, 2);
-  ticketCount += await purchase(priya, reactConf, 1, 1);
-  ticketCount += await purchase(marcus, jazz, 0, 2);
-  ticketCount += await purchase(marcus, workshop, 0, 20);
-  ticketCount += await purchase(sam, workshop, 1, 1);
-  ticketCount += await purchase(priya, art, 0, 1);
-  ticketCount += await purchase(marcus, devops, 0, 2, ["used", "valid"], true);
-  ticketCount += await purchase(sam, games, 0, 1);
+  await purchase(sam, reactConf, 0, 2);
+  await purchase(priya, reactConf, 1, 1);
+  await purchase(marcus, jazz, 0, 2);
+  await purchase(marcus, workshop, 0, 20);
+  await purchase(sam, workshop, 1, 1);
+  await purchase(priya, art, 0, 1);
+  await purchase(marcus, devops, 0, 2, ["used", "valid"], true);
+  await purchase(sam, games, 0, 1);
 
   await Ticket.updateOne(
     { event: reactConf._id, status: "valid" },

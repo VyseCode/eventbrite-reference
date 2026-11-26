@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { hasEnded } from "@/lib/datetime";
 import { CheckInPanel } from "@/components/CheckInPanel";
 import { ReviewsPanel } from "@/components/ReviewsPanel";
 import { SaveButton } from "@/components/SaveButton";
@@ -12,7 +13,7 @@ import {
 } from "@/components/Icons";
 import { getSession } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
-import { getEventById, listReviews } from "@/lib/queries";
+import { getEventById, listEventTickets, listReviews } from "@/lib/queries";
 
 export async function generateMetadata({
   params,
@@ -51,7 +52,10 @@ export default async function EventDetailPage({
   if (!event) notFound();
 
   const isOrganizer = event.organizer.id === session?.userId;
-  const ended = new Date(event.end).getTime() <= Date.now();
+  const ended = hasEnded(event.end);
+  const organizerTickets = isOrganizer
+    ? await listEventTickets(id, { limit: 20 })
+    : null;
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -149,7 +153,11 @@ export default async function EventDetailPage({
       {isOrganizer && (
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-3 text-lg font-semibold">Check-in desk</h2>
-          <CheckInPanel eventId={event.id} />
+          <CheckInPanel
+            eventId={event.id}
+            initialTickets={organizerTickets?.tickets ?? []}
+            initialTotal={organizerTickets?.total ?? 0}
+          />
         </section>
       )}
 

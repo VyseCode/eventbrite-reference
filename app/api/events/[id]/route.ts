@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { fail, handleError, ok, readJson } from "@/lib/api";
 import { connectDB } from "@/lib/db";
